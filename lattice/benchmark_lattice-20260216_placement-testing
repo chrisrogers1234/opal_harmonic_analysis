@@ -1,0 +1,256 @@
+
+//////////////////////////////////////////////////////////////////////////////
+// Input file for single bunch tracking through FETS-FFA ring              //
+//////////////////////////////////////////////////////////////////////////////
+Title,string="FETS-FFA test simulation using OPAL code";
+Option, ASCIIDUMP=TRUE;
+Option, ENABLEHDF5=FALSE;
+OPTION, PSDUMPFREQ=100000;
+Option, VERSION=10900;
+
+Option, ECHO=FALSE;
+
+Option, SPTDUMPFREQ=1;
+
+////////// CONSTANTS ////////////////////////////////////
+// * "Length" is total length of the sector magnet
+// * each coil has centre length = Length/n * 0.8
+
+REAL DEGREE=PI/180.;
+REAL MM=1000.;
+REAL C_LIGHT=0.3; // m/ns
+
+////////// MODULES ///////////////////////
+BOOL DO_MAGNET_FIELD_MAPS=True;BOOL DO_RF=False;
+
+////////// RING  ///////////////
+REAL R0=4.42;
+
+REAL E0=12;
+
+REAL P_MASS=938.272;
+REAL P_CHARGE=1.0;
+REAL P0=((E0+P_MASS)^2-P_MASS^2)^0.5;
+REAL N_CELLS=16;
+REAL RMIN=R0-1.0;
+REAL RMAX=R0+1.0;
+REAL FFA_CELL_LENGTH=2*PI/N_CELLS;
+REAL BFREQ=1;
+
+////////// TRACKING ///////////////
+REAL STEP_SIZE=0.01; // m
+REAL BEAM_PHI_INIT=0.0;
+
+//////// MAIN MAGNETS ////////////////
+REAL CIRCUMFERENCE=8*PI;
+REAL BF=-0.652456;
+REAL BD=0.504585;
+REAL K_VAL=7.728739;
+
+//REAL LAMBDA_LONG=0.12;
+//REAL LAMBDA_SHORT=0.12;
+//REAL X0_F=(4.5/360)*CIRCUMFERENCE/2;
+//REAL X0_D=(2.25/360)*CIRCUMFERENCE/2;
+//REAL START_GAP=(13.5/360)*CIRCUMFERENCE/2;
+//REAL DF_GAP=(2.25/360)*CIRCUMFERENCE/2;
+
+REAL LAMBDA=0.12;
+REAL SPIRAL_ANGLE=PI/4;
+REAL ENGE_0=-1.3;
+REAL ENGE_1=3.42;
+REAL ENGE_2=-1.20;
+REAL ENGE_3=0.23;
+
+REAL CELL_LENGTH = (2*PI/N_CELLS)*R0;
+REAL AZIMUTHAL_EXTENT=CELL_LENGTH;
+
+REAL FD_OFFSET = 0.0;
+
+REAL F_START = (0.0)*(PI/180)*R0;
+REAL F_CENTRE_LENGTH = (4.5*PI/180)*R0;
+REAL F_END = F_START+F_CENTRE_LENGTH;
+
+REAL D_START = (2.25)*(PI/180)*R0;
+REAL D_CENTRE_LENGTH = (2.25*PI/180)*R0;
+//REAL D_END = D_START+D_CENTRE_LENGTH+(7.25)*(PI/180)*R0;
+REAL D_END =  D_START+D_CENTRE_LENGTH+(0)*(PI/180)*R0;
+
+
+
+ringdef: RINGDEFINITION, HARMONIC_NUMBER=1, LAT_RINIT=R0, LAT_PHIINIT=-2.25, // =2 for 3MeV
+LAT_THETAINIT=0.0, BEAM_PHIINIT=0.0, BEAM_PRINIT=0.0, MIN_R=0.1, MAX_R=100,
+BEAM_RINIT=0.0, SYMMETRY=1.0, RFFREQ=1, IS_CLOSED=false;
+
+IF (DO_MAGNET_FIELD_MAPS) {
+//field_map: DUMPEMFIELDS, FILE_NAME="Fields1.dat", COORDINATE_SYSTEM="CYLINDRICAL", R_START=R0, R_STEPS=1, DR=1.0, PHI_START=0.0, PHI_STEPS=3601, DPHI=PI/180/10, Z_START=0.0, Z_STEPS=1, DZ=1.0, T_START=0.0, T_STEPS=1, DT=1.0;
+
+//field_map: DUMPEMFIELDS, FILE_NAME="Fields2.dat", COORDINATE_SYSTEM="CYLINDRICAL", R_START=R0, R_STEPS=1, DR=1.0, PHI_START=0*PI/180, PHI_STEPS=361, DPHI=PI/180/16, Z_START=0.0, Z_STEPS=1, DZ=1.0, T_START=0.0, T_STEPS=1, DT=1.0;
+
+//field_map: DUMPEMFIELDS, FILE_NAME="FieldsXY.dat", COORDINATE_SYSTEM="CARTESIAN", X_START=-5.0, X_STEPS=1000, DX=0.01, Y_START=-5.0, Y_STEPS=1000, DY=0.01, Z_START=0.01, //Z_STEPS=1, DZ=1.0, T_START=0.0, T_STEPS=1, DT=1.0;
+
+DUMPFIELDS, X_START=-5.0, X_STEPS=708, DX=0.0150, Y_START=-5.0, Y_STEPS=708, DY=0.01500, Z_START=0, Z_STEPS=1, DZ=0.100, FILE_NAME="FieldMapXY.dat";
+DUMPEMFIELDS, COORDINATE_SYSTEM=CYLINDRICAL, R_START=4.42, R_STEPS=1, DR=1.e-3, PHI_START=-22.5*DEGREE, PHI_STEPS=50000, DPHI=1e-3*DEGREE, Z_START=0.0, Z_STEPS=1, DZ=0.100, T_START=0, T_STEPS=1, DT=1., FILE_NAME="FieldMapRPHI.dat";
+//DUMPFIELDS, X_START=-0.0, X_STEPS=1500, DX=5e-3, Y_START=-0.0, Y_STEPS=1500, DY=5e-3, Z_START=0.0, Z_STEPS=5, DZ=1e-2, FILE_NAME="FieldMapXY.dat";
+//DUMPFIELDS, X_START=0.0, X_STEPS=350, DX=0.01500, Y_START=0.0, Y_STEPS=350, DY=0.0150, Z_START=0.0, Z_STEPS=6, DZ=1e-2, FILE_NAME="FieldMapXY_toz_5cm.dat";
+
+
+}
+
+BUILD_PROBE(NAME, ANGLE, DANGLE): MACRO {
+NAME: PROBE, xstart=RMIN*1000*cos(ANGLE),  xend=RMAX*1000*cos(ANGLE),  ystart=RMIN*1000*sin(ANGLE),  yend=RMAX*1000*sin(ANGLE);
+}
+
+
+REAL THIS_PROBE_PHI=0;
+BUILD_PROBE(Probe1, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe2, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe3, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe4, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe5, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe6, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe7, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe8, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe9, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe10, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe11, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe12, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe13, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe14, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe15, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+BUILD_PROBE(Probe16, THIS_PROBE_PHI, 0);
+THIS_PROBE_PHI = EVAL(THIS_PROBE_PHI+FFA_CELL_LENGTH);
+
+probes: Line = (
+Probe1, Probe2, Probe3, Probe4,
+Probe5, Probe6, Probe7, Probe8,
+Probe9, Probe10, Probe11, Probe12,
+Probe13, Probe14, Probe15, Probe16
+);
+
+
+///////////// RF //////////////////////////////
+REAL RF_VOLTAGE=6.0; // [kV] total field in the FFA
+REAL RF_PHASE=0.111; // [rad] RF phase
+REAL RF_FREQ_0=1.9005393962891857; // [MHz]
+REAL RF_FREQ_1=0.0; // [MHz/ns^1]
+REAL RF_FREQ_2=0.0; // [MHz/ns^2]
+REAL RF_FREQ_3=0.0; // [MHz/ns^3]
+REAL CAVITY_ANGLE=41.0; // [rad]
+// also __cavity__; // soft_cavity, hard_cavity, radial_cavity, no_cavity
+
+REAL SIN_CAV=sin(CAVITY_ANGLE);
+REAL COS_CAV=cos(CAVITY_ANGLE);
+
+//REAL F_END=2*X0_F;
+//REAL D_END=2*X0_D+DF_GAP+START_GAP;
+//REAL END_GAP=2*PI*R0/N_CELLS-F_END-D_END;
+
+magnet_f_end: ASYMMETRIC_ENGE,
+    X0_START=F_CENTRE_LENGTH/2, X0_END=F_CENTRE_LENGTH/2,
+    LAMBDA_START=LAMBDA, LAMBDA_END=LAMBDA,
+    COEFFICIENTS_START={ENGE_0, ENGE_1, ENGE_2, ENGE_3},
+    COEFFICIENTS_END={ENGE_0, ENGE_1, ENGE_2, ENGE_3};
+
+f_magnet: ScalingFFAMagnet, B0=BF,
+                    R0=R0,
+                    FIELD_INDEX=K_VAL,
+                    TAN_DELTA=tan(SPIRAL_ANGLE),
+                    MAX_Y_POWER=4,
+                    END_FIELD_MODEL=magnet_f_end,
+                    RADIAL_NEG_EXTENT=0.8,
+                    RADIAL_POS_EXTENT=1.2,
+                    MAGNET_START=F_START,
+                    MAGNET_END=F_END + FD_OFFSET,
+                    HEIGHT=1,
+                    AZIMUTHAL_EXTENT=AZIMUTHAL_EXTENT;
+
+magnet_d_end: ASYMMETRIC_ENGE,
+    X0_START=D_CENTRE_LENGTH/2, X0_END=D_CENTRE_LENGTH/2,
+    LAMBDA_START=LAMBDA, LAMBDA_END=LAMBDA,
+    COEFFICIENTS_START={ENGE_0, ENGE_1, ENGE_2, ENGE_3},
+    COEFFICIENTS_END={ENGE_0, ENGE_1, ENGE_2, ENGE_3};
+
+d_magnet: ScalingFFAMagnet, B0=BD,
+                    R0=R0,
+                    FIELD_INDEX=K_VAL,
+                    TAN_DELTA=tan(SPIRAL_ANGLE),
+                    MAX_Y_POWER=4,
+                    END_FIELD_MODEL=magnet_d_end,
+                    RADIAL_NEG_EXTENT=0.8,
+                    RADIAL_POS_EXTENT=1.2,
+                    MAGNET_START=D_START,
+                    MAGNET_END=D_END,
+                    HEIGHT=1,
+                    AZIMUTHAL_EXTENT=AZIMUTHAL_EXTENT;
+
+
+////////////////////////// RF CAVITY ///////////////////////////
+REAL MILLIMETRE=1e-3;
+rf_frequency_td: POLYNOMIAL_TIME_DEPENDENCE, P0=RF_FREQ_0, P1=RF_FREQ_1, P2=RF_FREQ_2, P3=RF_FREQ_3;
+rf_amplitude_td: POLYNOMIAL_TIME_DEPENDENCE, P0=RF_VOLTAGE/100; // V*1e-2 MV/m, 100 mm long cavity => V kV total
+rf_phase_td: POLYNOMIAL_TIME_DEPENDENCE, P0=RF_PHASE;
+hard_cavity_drift: LOCAL_CARTESIAN_OFFSET,
+    end_position_x=-0.050*MILLIMETRE, end_position_y=0.*MILLIMETRE,
+    end_normal_x=1., end_normal_y=0.; // go back to start of cavity
+hard_rf_cavity: VARIABLE_RF_CAVITY, PHASE_MODEL="RF_PHASE", AMPLITUDE_MODEL="RF_AMPLITUDE",
+FREQUENCY_MODEL="RF_FREQUENCY", L=0.100*MILLIMETRE, HEIGHT=1.*MILLIMETRE,
+WIDTH=3.*MILLIMETRE;
+soft_cavity_drift_tilt: LOCAL_CARTESIAN_OFFSET,
+    end_position_x=-0.100*MILLIMETRE, end_position_y=0.*MILLIMETRE,
+    end_normal_x=COS_CAV, end_normal_y=SIN_CAV; // step back half gap and then rotate
+soft_rf_cavity: VARIABLE_RF_CAVITY_FRINGE_FIELD, PHASE_MODEL="RF_PHASE_TD", AMPLITUDE_MODEL="RF_AMPLITUDE_TD",
+FREQUENCY_MODEL="RF_FREQUENCY_TD", L=0.200, HEIGHT=1., WIDTH=3.,
+CENTRE_LENGTH=0.100, END_LENGTH=0.010, CAVITY_CENTRE=0.100, MAX_ORDER=4;
+soft_cavity_drift_untilt: LOCAL_CARTESIAN_OFFSET,
+    end_position_x=-0.200*MILLIMETRE, end_position_y=0.*MILLIMETRE,
+    end_normal_x=COS_CAV, end_normal_y=-SIN_CAV; // go back to start of cavity and then rotate back
+soft_cavity_drift_back: LOCAL_CARTESIAN_OFFSET,
+    end_position_x=0.100*MILLIMETRE, end_position_y=0.*MILLIMETRE,
+    end_normal_x=1.0, end_normal_y=0.0; // go to middle of cavity
+
+soft_cavity: Line = (soft_cavity_drift_tilt, soft_rf_cavity,
+            soft_cavity_drift_back, soft_cavity_drift_untilt);
+
+no_cavity: Line = (soft_cavity_drift_tilt, soft_cavity_drift_untilt);
+
+IF (DO_RF) {
+cavity: Line = (soft_cavity_drift_tilt, soft_rf_cavity,
+            soft_cavity_drift_back, soft_cavity_drift_untilt,
+            );
+}
+
+cell: Line = (f_magnet, d_magnet);
+l1: Line = (ringdef, probes,
+    cell
+    );
+
+REAL B_FREQ=1; // 1 MHz
+REAL SPEED=C_LIGHT*(P0/(E0+P_MASS));
+REAL STEP_SIZE_NS=STEP_SIZE/SPEED;
+REAL STEPS_PER_TURN=1000/STEP_SIZE_NS/B_FREQ; // (this is really steps per B_FREQ)
+
+Dist1: DISTRIBUTION, TYPE=fromfile, FNAME="CO_coords.dat", INPUTMOUNITS=NONE;
+Fs1:FIELDSOLVER, FSTYPE=None, MX=8, MY=8, MT=8,
+PARFFTX=true, PARFFTY=true, PARFFTT=false,
+BCFFTX=open, BCFFTY=open, BCFFTT=open, BBOXINCR=2;
+beam1: BEAM, PARTICLE=PROTON, pc=P0*1e-3, NPART=5, BCURRENT=0, CHARGE=P_CHARGE, mass=P_MASS*1e-3, BFREQ=BFREQ;
+TRACK, LINE=l1, BEAM=beam1, MAXSTEPS=1000, STEPSPERTURN=STEPS_PER_TURN;
+RUN, METHOD="CYCLOTRON-T", BEAM=beam1, FIELDSOLVER=Fs1, DISTRIBUTION=Dist1;
+ENDTRACK;
+STOP;
+
