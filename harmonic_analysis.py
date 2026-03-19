@@ -44,6 +44,7 @@ class HarmonicAnalysis:
         columns = self.trajectory_columns
         self.trajectory = pandas.read_csv(trajectory_filename, sep=" ",
                                           header=0, names=columns, skiprows=2)
+        self.trajectory["step"] = [i for i in range(self.trajectory.shape[0])]
         print(f"Loaded {self.trajectory.shape[0]} rows")
 
     def analyse_trajectory(self):
@@ -139,11 +140,20 @@ class HarmonicAnalysis:
         bh, bv, bl = self.calculate_field(horizontal, vertical, longitudinal, coordinates)
         a_fft = self.calculate_fft(bh, bv)
         if will_plot:
-            print("Plotting at", psv)
-            self.plot_coordinate_system(psv, horizontal, vertical, coordinates)
-            self.plot_fields(bh, bv, bl)
-            self.plot_fft(a_fft)
+            self.plot_one_step(psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft)
         return a_fft
+
+    def plot_one_step(self, psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft):
+        print("Plotting at", psv)
+        figure = self.plot_coordinate_system(psv, horizontal, vertical, coordinates)
+        figure.suptitle(f"Step {psv['step']}")
+        figure.savefig(f"coords_{psv['step']}.png")
+        figure = self.plot_fields(bh, bv, bl)
+        figure.suptitle(f"Step {psv['step']}")
+        figure.savefig(f"fields_{psv['step']}.png")
+        figure = self.plot_fft(a_fft)
+        figure.suptitle(f"Step {psv['step']}")
+        figure.savefig(f"fft_{psv['step']}.png")
 
     def plot_coordinate_system(self, psv, horizontal, vertical, coordinates):
         delta = self.config["delta"]
@@ -168,6 +178,7 @@ class HarmonicAnalysis:
         axes.set_xlabel("x [m]")
         axes.set_ylabel("y [m]")
         axes.set_zlabel("z [m]")
+        return figure
 
     def plot_fields(self, bh, bv, bl):
         figure = matplotlib.pyplot.figure()
@@ -182,6 +193,7 @@ class HarmonicAnalysis:
         axes.set_xlabel("angle [degree]")
         axes.set_ylabel("B [T]")
         axes.legend()
+        return figure
 
     def plot_fft(self, a_fft):
         figure = matplotlib.pyplot.figure()
@@ -191,6 +203,7 @@ class HarmonicAnalysis:
         axes.scatter(x_axis, numpy.real(a_fft), label="real", s=2)
         axes.scatter(x_axis, numpy.imag(a_fft), label="imaginary", s=2)
         axes.legend()
+        return figure
 
 def default_config():
     config = {
@@ -200,7 +213,7 @@ def default_config():
         "harmonic_analysis_track_id":"ID1", # ID of trajectory
         "harmonic":128, # number of terms in FFT
         "delta":1e-3, # distance from trajectory to harmonic analysis coordinates [metres]
-        "do_one_step_plot":[0, 50, 100, 150, 200],
+        "do_one_step_plot":[100],
     }
     return config
 
