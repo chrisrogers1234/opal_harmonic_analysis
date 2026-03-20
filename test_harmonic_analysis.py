@@ -76,8 +76,10 @@ class TestHarmonicAnalysis(unittest.TestCase):
     def test_build_rotated_vectors(self):
         psv = {"x":1, "y":2, "z":3, "xp":5, "yp":0, "zp":0}
         h, v, l = self.analysis.get_coordinate_system(psv)
-        coordinates = self.analysis.build_rotated_vectors(psv, h, v)
+        centre, coordinates = self.analysis.build_rotated_vectors(psv, h, v)
         self.assertEqual(len(coordinates), self.default_config["harmonic"])
+        for i in range(3):
+            self.assertEqual(centre[i], [1, 2, 3][i])
         for i, c in enumerate(coordinates):
             c = (c - numpy.array([1, 2, 3]))/self.default_config["delta"]
             self.assertAlmostEqual(numpy.dot(c, l), 0.0)
@@ -87,7 +89,7 @@ class TestHarmonicAnalysis(unittest.TestCase):
     def test_calculate_field_zero(self):
         psv = {"x":0, "y":0, "z":0, "xp":0, "yp":1, "zp":0}
         h, v, l = self.analysis.get_coordinate_system(psv)
-        coordinates = self.analysis.build_rotated_vectors(psv, h, v)
+        centre, coordinates = self.analysis.build_rotated_vectors(psv, h, v)
         bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
         for b_array in bh, bv, bl:
             self.assertEqual(len(b_array), 8)
