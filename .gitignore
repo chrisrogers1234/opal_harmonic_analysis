@@ -15,4 +15,5 @@ lattice/benchmark_lattice-20260216_placement-testing.lbal
 lattice/benchmark_lattice-20260216_placement-testing.stat
 lattice/data/
 lattice/timing.dat
-
+__pycache__
+lattice/*.png
