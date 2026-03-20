@@ -6,11 +6,30 @@ import harmonic_analysis
 
 
 class FieldMockup():
+    """
+    Arbitrary multipole. Field is given by [cite wikipedia]
+        Bz + iBx = C_n (x - i z)^{n-1}
+    where C_n is complex
+    """
     def __init__(self):
-        pass
+        # apply formula
+        # B = C + C_i u^i + C_ij u^i u^j + ...
+        # where u^i are components of unit vector
+        self.rotation = numpy.identity(3)
+        self.c_n = []
+        self.centre = numpy.array([0, 0, 0])
 
-    def get_field_value(x, y, z, t):
-        return [False]+[0.0]*3+[0.0]*3
+    def get_field_value(self, x, y, z, t):
+        pos = numpy.array([x, y, z]) - self.centre
+        pos = numpy.dot(self.rotation, pos)
+        bx, by, bz = 0.0, 0.0, 0.0
+        for n, c in enumerate(self.c_n):
+            bfield = c * (x + z*1j)**n
+            bx = numpy.imag(bfield)
+            bz = numpy.real(bfield)
+        field = (False, bx, by, bz, 0.0, 0.0, 0.0)
+        print("Get field", self.c_n, field)
+        return field
 
 class TestHarmonicAnalysis(unittest.TestCase):
     def setUp(self):
@@ -65,7 +84,26 @@ class TestHarmonicAnalysis(unittest.TestCase):
             self.assertAlmostEqual(numpy.dot(c, h), numpy.cos(2*numpy.pi*i/8))
             self.assertAlmostEqual(numpy.dot(c, v), numpy.sin(2*numpy.pi*i/8))
 
-    
+    def test_calculate_field_zero(self):
+        psv = {"x":0, "y":0, "z":0, "xp":0, "yp":1, "zp":0}
+        h, v, l = self.analysis.get_coordinate_system(psv)
+        coordinates = self.analysis.build_rotated_vectors(psv, h, v)
+        bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
+        for b_array in bh, bv, bl:
+            self.assertEqual(len(b_array), 8)
+            for b in b_array:
+                self.assertEqual(b, 0)
+        self.analysis.field.c_n = [1]
+        bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
+        print(bv)
+        for i, b in enumerate(bv):
+            print(b, coordinates[i])
+            #self.assertEqual(b, numpy.dot(coordinates[i]/self.default_config["delta"], h))
+        for i, b in enumerate(bh):
+            self.assertEqual(b, 0)
+        for i, b in enumerate(bl):
+            self.assertEqual(b, 0)
+
 
 
 if __name__ == "__main__":

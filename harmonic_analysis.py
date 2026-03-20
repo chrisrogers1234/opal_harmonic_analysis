@@ -62,6 +62,8 @@ class HarmonicAnalysis:
             if step["id"] != self.config["harmonic_analysis_track_id"]:
                 continue
             will_plot = i in self.config["do_one_step_plot"]
+            if not will_plot:
+                continue
             self.analyse_one_step(step, will_plot)
 
     def analyse_one_step(self, psv, will_plot):
@@ -72,11 +74,12 @@ class HarmonicAnalysis:
         Returns the FFT for the step
         """
         horizontal, vertical, longitudinal = self.get_coordinate_system(psv)
-        coordinates = self.build_rotated_vectors(psv, horizontal, vertical)
-        bh, bv, bl = self.calculate_field(horizontal, vertical, longitudinal, coordinates)
-        a_fft = self.calculate_fft(bh, bv)
+        centre, coordinates = self.build_rotated_vectors(psv, horizontal, vertical)
+        br = self.calculate_field_r(centre, coordinates)
+        a_fft = self.calculate_fft(br)
         if will_plot:
-            self.plot_one_step(psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft)
+            bh, bv, bl = self.calculate_field(horizontal, vertical, longitudinal, coordinates)
+            self.plot_one_step(psv, horizontal, vertical, coordinates, bh, bv, bl, br, a_fft)
         return a_fft
 
     def get_p_vector(self, psv):
@@ -133,7 +136,7 @@ class HarmonicAnalysis:
         Returns a list of coordinates in a circle centred on psv position in the
         plane defined by horizontal and vertical vectors
         """
-        x_vector = self.get_x_vector(psv)
+        centre = self.get_x_vector(psv)
         delta = self.config["delta"]
         # angles is the list from [0, dtheta, 2dtheta, ..., 2 pi - dtheta]
         angles = self.get_angles()
@@ -142,9 +145,9 @@ class HarmonicAnalysis:
         angles = numpy.array([angles]).transpose()
         coordinates = numpy.cos(angles)*horizontal+numpy.sin(angles)*vertical
         coordinates *= delta
-        coordinates += x_vector
+        coordinates += centre
         # scale coordinates to delta
-        return coordinates
+        return centre, coordinates
 
     def calculate_field(self, horizontal, vertical, longitudinal, coordinates):
         """
@@ -174,15 +177,37 @@ class HarmonicAnalysis:
         bl = numpy.dot(bfield, longitudinal)
         return bh, bv, bl
 
-    def calculate_fft(self, bh, bv):
+    def calculate_field_r(self, centre, coordinates):
+        """
+        Calculate the fields as horizontal and vertical components
+        - centre: centre of the coordinate system (e.g. position of the particle)
+        - coordinates: list of coordinates on which field will be calculated
+        Returns br; field parallel to direction pointed to by each coordinate
+        """
+        bfield = []
+        # loop over the points and calculate bfield in global coordinates, then
+        # transform to r coordinates
+        for point in coordinates:
+            # x, y, z, t
+            point_tuple = point[0], point[1], point[2], 0.0
+            # get_field_value returns out_of_bounds, B 3-vector, E 3-vector
+            field = self.field.get_field_value(*point_tuple)
+            a_field = numpy.array([field[1:4]])
+            r_v = point - centre
+            br = numpy.dot(a_field, r_v)/self.config["delta"]
+            bfield.append(br[0])
+        bfield = numpy.array(bfield)
+        return bfield
+
+
+    def calculate_fft(self, br):
         """
         Do the FFT
         """
-        complex_array = bh + 1j*bv
-        fft = numpy.fft.fft(complex_array)
-        return fft
+        a_fft = numpy.fft.fft(br)
+        return a_fft
 
-    def plot_one_step(self, psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft):
+    def plot_one_step(self, psv, horizontal, vertical, coordinates, bh, bv, bl, br, a_fft):
         """
         Make plots characterising harmonic analysis of a single step
         """
@@ -190,7 +215,7 @@ class HarmonicAnalysis:
         figure = self.plot_coordinate_system(psv, horizontal, vertical, coordinates)
         figure.suptitle(f"Step {psv['step']}")
         figure.savefig(f"coords_{psv['step']}.png")
-        figure = self.plot_fields(bh, bv, bl)
+        figure = self.plot_fields(bh, bv, bl, br)
         figure.suptitle(f"Step {psv['step']}")
         figure.savefig(f"fields_{psv['step']}.png")
         figure = self.plot_fft(a_fft)
@@ -204,6 +229,7 @@ class HarmonicAnalysis:
         - horizontal: unit vector in horizontal direction, perpendicular to p
         - vertical: unit vector in vertical direction, perpendicular to p
         - coordinates: coordinates on which the field is calculated
+        Returns the figure
         """
         delta = self.config["delta"]
         figure = matplotlib.pyplot.figure()
@@ -229,7 +255,7 @@ class HarmonicAnalysis:
         axes.set_zlabel("z [m]")
         return figure
 
-    def plot_fields(self, bh, bv, bl):
+    def plot_fields(self, bh, bv, bl, br):
         """
         Plot the fields
         - bh: list of horizontal field values
@@ -238,7 +264,7 @@ class HarmonicAnalysis:
         """
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot()
-        for bfield, name in [(bh, "$B_h$"), (bv, "$B_v$"), (bl, "$B_l$")]:
+        for bfield, name in [(bh, "$B_h$"), (bv, "$B_v$"), (bl, "$B_l$"), (br, "$B_r$")]:
             angles = numpy.degrees(self.get_angles())
             axes.plot(angles, bfield, label=name)
         ylim = axes.get_ylim()
@@ -258,7 +284,6 @@ class HarmonicAnalysis:
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot()
         x_axis = [i for i, z in enumerate(a_fft)]
-        axes.semilogy()
         axes.scatter(x_axis, numpy.real(a_fft), label="real", s=2)
         axes.scatter(x_axis, numpy.imag(a_fft), label="imaginary", s=2)
         axes.legend()
