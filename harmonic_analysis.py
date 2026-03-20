@@ -25,8 +25,12 @@ The algorithm is:
 ** Generate set of points orthogonal to the trajectory
 ** Calculate fields on each point, in trajectory coordinate system
 ** Do FFT on the calculated fields
-** Not implemented: figure out multipole components based on FFT
-* Not implemented: Store the list of multipole components
+** Figure out multipole components based on FFT
+* Store the list of multipole components
+
+For a field like
+        Bz + iBx = C_n (x - i z)^{n-1}
+the values of C_n at each step are stored in self.fft_list
 """
 
 class HarmonicAnalysis:
@@ -206,7 +210,12 @@ class HarmonicAnalysis:
         Do the FFT
         """
         a_fft = numpy.fft.fft(br)
-        return a_fft
+        dr = self.config["delta"]
+        mod_fft = []
+        for i, value in enumerate(a_fft):
+            value *= 2j/dr**(i-1)/len(br)
+            mod_fft.append(value)
+        return numpy.array(mod_fft)
 
     def plot_one_step(self, psv, horizontal, vertical, coordinates, bh, bv, bl, br, a_fft):
         """
