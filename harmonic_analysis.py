@@ -26,7 +26,7 @@ The algorithm is:
 ** Calculate fields on each point, in trajectory coordinate system
 ** Do FFT on the calculated fields
 ** Not implemented: figure out multipole components based on FFT
-* Store a list of multipole components
+* Not implemented: Store the list of multipole components
 """
 
 class HarmonicAnalysis:
@@ -35,6 +35,7 @@ class HarmonicAnalysis:
         self.trajectory = None
         self.trajectory_columns = ["id", "x", "xp", "y", "yp", "z", "zp"]
         self.field = pyopal.objects.field # by default we use pyopal field
+
     def parse_lattice_file(self):
         """
         Load an OPAL lattice file and execute it to build the field map in memory
