@@ -20,7 +20,13 @@ The algorithm is:
 * pyopal opens a lattice file and runs the file, including any tracking steps.
 * pyopal opens a beam file and loads the beam file
 * HarmonicAnalysis loops over the trajectories in the beam file and looks for user-specified trajectory
-*
+* For each step in the trajectory
+** Calculate the coordinate system
+** Generate set of points orthogonal to the trajectory
+** Calculate fields on each point, in trajectory coordinate system
+** Do FFT on the calculated fields
+** Not implemented: figure out multipole components based on FFT
+* Store a list of multipole components
 """
 
 class HarmonicAnalysis:
@@ -28,17 +34,17 @@ class HarmonicAnalysis:
         self.config = config
         self.trajectory = None
         self.trajectory_columns = ["id", "x", "xp", "y", "yp", "z", "zp"]
-
+        self.field = pyopal.objects.field # by default we use pyopal field
     def parse_lattice_file(self):
         """
-        Load a lattice file and execute it to build the field map in memory
+        Load an OPAL lattice file and execute it to build the field map in memory
         """
         lattice_filename = self.config["lattice_filename"]
         pyopal.objects.parser.initialise_from_opal_file(lattice_filename)
 
     def parse_track_orbit_file(self):
         """
-        Load a track orbit file to find the trajectory
+        Load a trackOrbit file to find the trajectory
         """
         trajectory_filename = self.config["trajectory_filename"]
         columns = self.trajectory_columns
@@ -49,6 +55,7 @@ class HarmonicAnalysis:
 
     def analyse_trajectory(self):
         """
+        Loop over the trajectory and perform harmonic analysis for each step
         """
         for i, step in self.trajectory.iterrows():
             if step["id"] != self.config["harmonic_analysis_track_id"]:
@@ -56,7 +63,27 @@ class HarmonicAnalysis:
             will_plot = i in self.config["do_one_step_plot"]
             self.analyse_one_step(step, will_plot)
 
+    def analyse_one_step(self, psv, will_plot):
+        """
+        Calculate the multipole components for one step
+        - psv: phase space vector; one line from input trackOrbit file
+        - will_plot: set to True to make plots characterising the fft
+        Returns the FFT for the step
+        """
+        horizontal, vertical, longitudinal = self.get_coordinate_system(psv)
+        coordinates = self.build_rotated_vectors(psv, horizontal, vertical)
+        bh, bv, bl = self.calculate_field(horizontal, vertical, longitudinal, coordinates)
+        a_fft = self.calculate_fft(bh, bv)
+        if will_plot:
+            self.plot_one_step(psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft)
+        return a_fft
+
     def get_p_vector(self, psv):
+        """
+        Get the normalised momentum vector for input row psv
+        - psv: phase space vector; one line from input trackOrbit file
+        Returns momentum vector normalised to length one
+        """
         # position and direction vectors
         p_vector = numpy.array([psv["xp"], psv["yp"], psv["zp"]])
         # normalise p_vector (momentum vector)
@@ -64,29 +91,46 @@ class HarmonicAnalysis:
         return p_vector
 
     def get_x_vector(self, psv):
+        """
+        Get the position vector for input row psv
+        - psv: phase space vector; one line from input trackOrbit file
+        """
         x_vector = numpy.array([psv["x"], psv["y"], psv["z"]])
         return x_vector
 
     def get_coordinate_system(self, psv):
         """
         Get the orthogonal coordinate system for a given phase space vector
+        - psv: phase space vector; one line from input trackOrbit file
+        Returns horizontal, vertical and longitudinal unit vectors
         """
         down = [0,0,-1]
         p_vector = self.get_p_vector(psv)
         # we define horizontal as the vector perpendicular to p_vector and down
-        # note that if p_vector == down, this algorithm will fail
+        # note that if p_vector == +-down, this algorithm will fail
         horizontal = numpy.cross(down, p_vector)
+        # normalise to length 1
+        horizontal = horizontal/numpy.linalg.norm(horizontal)
         # we define vertical as the vector perpendicular to p_vector and horizontal
         vertical = numpy.cross(horizontal, p_vector)
+        vertical = vertical/numpy.linalg.norm(vertical)
         return horizontal, vertical, p_vector
 
     def get_angles(self):
+        """
+        Get an array of angles, of length self.config["harmonic"] from 0 <= t < 2 pi
+        """
         angles = numpy.linspace(0, 2*numpy.pi, self.config["harmonic"], endpoint=False)
         return angles
 
     def build_rotated_vectors(self, psv, horizontal, vertical):
         """
         Set up the vectors at which we calculate the field values
+        - psv: phase space vector; one line from input trackOrbit file
+        - horizontal: unit vector in horizontal direction
+        - vertical: unit vector in vertical direction
+        Returns a list of coordinates in a circle centred on psv position in the
+        plane defined by horizontal and vertical vectors
         """
         x_vector = self.get_x_vector(psv)
         delta = self.config["delta"]
@@ -104,6 +148,12 @@ class HarmonicAnalysis:
     def calculate_field(self, horizontal, vertical, longitudinal, coordinates):
         """
         Calculate the fields as horizontal and vertical components
+        - horizontal: unit vector in horizontal direction
+        - vertical: unit vector in vertical direction
+        - longitudinal: unit vector in longitudinal direction
+        - coordinates: list of coordinates on which field will be calculated
+        Returns bh, bv, bl; fields in horizontal, vertical and longitudinal
+        directions respectively.
         """
         bfield = None
         # loop over the points and calculate bfield in global coordinates
@@ -111,7 +161,7 @@ class HarmonicAnalysis:
             # x, y, z, t
             point_tuple = point[0], point[1], point[2], 0.0
             # get_field_value returns out_of_bounds, B 3-vector, E 3-vector
-            field = pyopal.objects.field.get_field_value(*point_tuple)
+            field = self.field.get_field_value(*point_tuple)
             a_field = numpy.array([field[1:4]])
             if bfield is None:
                 bfield = a_field
@@ -131,19 +181,10 @@ class HarmonicAnalysis:
         fft = numpy.fft.fft(complex_array)
         return fft
 
-    def analyse_one_step(self, psv, will_plot):
-        """
-        Calculate the multipole components for one step
-        """
-        horizontal, vertical, longitudinal = self.get_coordinate_system(psv)
-        coordinates = self.build_rotated_vectors(psv, horizontal, vertical)
-        bh, bv, bl = self.calculate_field(horizontal, vertical, longitudinal, coordinates)
-        a_fft = self.calculate_fft(bh, bv)
-        if will_plot:
-            self.plot_one_step(psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft)
-        return a_fft
-
     def plot_one_step(self, psv, horizontal, vertical, coordinates, bh, bv, bl, a_fft):
+        """
+        Make plots characterising harmonic analysis of a single step
+        """
         print("Plotting at", psv)
         figure = self.plot_coordinate_system(psv, horizontal, vertical, coordinates)
         figure.suptitle(f"Step {psv['step']}")
@@ -156,6 +197,13 @@ class HarmonicAnalysis:
         figure.savefig(f"fft_{psv['step']}.png")
 
     def plot_coordinate_system(self, psv, horizontal, vertical, coordinates):
+        """
+        Plot the coordinate system
+        - psv: phase space vector; one line from input trackOrbit file
+        - horizontal: unit vector in horizontal direction, perpendicular to p
+        - vertical: unit vector in vertical direction, perpendicular to p
+        - coordinates: coordinates on which the field is calculated
+        """
         delta = self.config["delta"]
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot(projection='3d')
@@ -181,6 +229,12 @@ class HarmonicAnalysis:
         return figure
 
     def plot_fields(self, bh, bv, bl):
+        """
+        Plot the fields
+        - bh: list of horizontal field values
+        - bv: list of vertical field values
+        - bl: list of longitudinal field values
+        """
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot()
         for bfield, name in [(bh, "$B_h$"), (bv, "$B_v$"), (bl, "$B_l$")]:
@@ -196,6 +250,10 @@ class HarmonicAnalysis:
         return figure
 
     def plot_fft(self, a_fft):
+        """
+        Plot the fourier transform
+        - a_fft: fourier transform output
+        """
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot()
         x_axis = [i for i, z in enumerate(a_fft)]
