@@ -35,6 +35,7 @@ class HarmonicAnalysis:
         self.trajectory = None
         self.trajectory_columns = ["id", "x", "xp", "y", "yp", "z", "zp"]
         self.field = pyopal.objects.field # by default we use pyopal field
+        self.fft_list = []
 
     def parse_lattice_file(self):
         """
@@ -58,13 +59,13 @@ class HarmonicAnalysis:
         """
         Loop over the trajectory and perform harmonic analysis for each step
         """
+        self.fft_list = []
         for i, step in self.trajectory.iterrows():
             if step["id"] != self.config["harmonic_analysis_track_id"]:
                 continue
             will_plot = i in self.config["do_one_step_plot"]
-            if not will_plot:
-                continue
-            self.analyse_one_step(step, will_plot)
+            an_fft = self.analyse_one_step(step, will_plot)
+            self.fft_list.append(an_fft)
 
     def analyse_one_step(self, psv, will_plot):
         """
