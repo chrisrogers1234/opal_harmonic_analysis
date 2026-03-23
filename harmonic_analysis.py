@@ -208,7 +208,8 @@ class HarmonicAnalysis:
         for i, a_field in enumerate(bfield):
             point = coordinates[i]
             r_v = self.norm(point-centre)
-            phi_v = self.norm(numpy.cross(numpy.array([0,1,0]), point-centre))
+            # warning - CHECK phi sign here
+            phi_v = self.norm(numpy.cross(longitudinal, point-centre))
             br.append(numpy.dot(a_field, r_v))
             bphi.append(numpy.dot(a_field, phi_v))
             bl.append(numpy.dot(a_field, longitudinal))
@@ -330,8 +331,8 @@ class HarmonicAnalysis:
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot()
         x_axis = [i for i, z in enumerate(a_fft)]
-        axes.scatter(x_axis, numpy.real(a_fft), label="real", s=2)
-        axes.scatter(x_axis, numpy.imag(a_fft), label="imaginary", s=2)
+        axes.scatter(x_axis, numpy.real(a_fft), label="real")
+        axes.scatter(x_axis, numpy.imag(a_fft), label="imaginary")
         axes.legend()
         axes.set_title(f"Axis: {fft_axis}")
         return figure
