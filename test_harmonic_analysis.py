@@ -86,17 +86,17 @@ class TestHarmonicAnalysis(unittest.TestCase):
             self.assertAlmostEqual(numpy.dot(c, h), numpy.cos(2*numpy.pi*i/8))
             self.assertAlmostEqual(numpy.dot(c, v), numpy.sin(2*numpy.pi*i/8))
 
-    def test_calculate_field(self):
+    def test_calculate_field_cart(self):
         psv = {"x":0, "y":0, "z":0, "xp":0, "yp":1, "zp":0}
         h, v, l = self.analysis.get_coordinate_system(psv)
         centre, coordinates = self.analysis.build_rotated_vectors(psv, h, v)
-        bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
+        bh, bv, bl = self.analysis.calculate_field_cart(h, v, l, coordinates)
         for b_array in bh, bv, bl:
             self.assertEqual(len(b_array), 8)
             for b in b_array:
                 self.assertEqual(b, 0)
         self.analysis.field.c_n = [1.0]
-        bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
+        bh, bv, bl = self.analysis.calculate_field_cart(h, v, l, coordinates)
         for i, b in enumerate(bv):
             self.assertEqual(b, 1.0)
         for i, b in enumerate(bh):
@@ -105,7 +105,7 @@ class TestHarmonicAnalysis(unittest.TestCase):
             self.assertEqual(b, 0)
 
         self.analysis.field.c_n = [0, 1.0]
-        bh, bv, bl = self.analysis.calculate_field(h, v, l, coordinates)
+        bh, bv, bl = self.analysis.calculate_field_cart(h, v, l, coordinates)
         for i, b in enumerate(bv):
             dx = coordinates[i][0] # vertical field = horizontal position*gradient
             self.assertEqual(b, dx)
@@ -115,36 +115,39 @@ class TestHarmonicAnalysis(unittest.TestCase):
         for i, b in enumerate(bl):
             self.assertEqual(b, 0)
 
-    def test_calculate_field_r(self):
+    def test_calculate_field_cyl(self):
         self.analysis.field.c_n = [1.0]
         psv = {"x":0, "y":0, "z":0, "xp":0, "yp":1, "zp":0}
         h, v, l = self.analysis.get_coordinate_system(psv)
         centre, coordinates = self.analysis.build_rotated_vectors(psv, h, v)
-        br = self.analysis.calculate_field_r(centre, coordinates)
-        self.assertEqual(len(br), len(coordinates))
-        for i, b in enumerate(br):
+        b_cyl = self.analysis.calculate_field_cyl(l, centre, coordinates)
+        self.assertEqual(len(b_cyl[0]), len(coordinates))
+        for i, b in enumerate(b_cyl[0]):
             c = coordinates[i]
             self.assertEqual(b, numpy.dot(c, v)/self.default_config["delta"])
 
     def test_analyse_one_step(self):
         centre = [7, 8, 9]
         psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":0, "yp":1, "zp":0, "step":-1}
-        self.default_config["harmonic"] = 128
-        self.default_config["delta"] = 3
-        #c_n = [1+4j, 2, 3]
+        self.default_config["harmonic"] = 16
+        self.default_config["delta"] = 1e-1
         c_n = []
         for i in range(3):
             real_c = numpy.random.uniform(-10, 10)
             imag_c = numpy.random.uniform(-10, 10)
             c_n.append(real_c+imag_c*1j)
+        #c_n = [1, 2, 3]
         self.analysis.field.c_n = c_n
         self.analysis.field.centre = numpy.array(centre)
-        a_fft = self.analysis.analyse_one_step(psv, self.do_plots)
-        self.analysis = harmonic_analysis.HarmonicAnalysis(self.default_config)
-        self.analysis.field = FieldMockup()
+        fft_r, fft_phi, fft_l = self.analysis.analyse_one_step(psv, self.do_plots)
         for i, c_ni in enumerate(c_n):
-            self.assertAlmostEqual(c_ni, a_fft[i+1])
+            self.assertAlmostEqual(c_ni, fft_r[i+1])
         if self.do_plots:
+            psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":1, "yp":1, "zp":0, "step":-2}
+            self.analysis.analyse_one_step(psv, self.do_plots)
+            psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":1, "yp":0, "zp":0, "step":-3}
+            self.analysis.analyse_one_step(psv, self.do_plots)
+            print(f"Plotting for c_n: {c_n}")
             matplotlib.pyplot.show(block=False)
             input()
 
