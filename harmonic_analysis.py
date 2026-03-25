@@ -39,7 +39,9 @@ class HarmonicAnalysis:
         self.trajectory = None
         self.trajectory_columns = ["id", "x", "xp", "y", "yp", "z", "zp"]
         self.field = pyopal.objects.field # by default we use pyopal field
-        self.fft_list = []
+        self.fft_r_list = []
+        self.fft_phi_list = []
+        self.fft_l_list = []
 
     def parse_lattice_file(self):
         """
@@ -69,7 +71,9 @@ class HarmonicAnalysis:
                 continue
             will_plot = i in self.config["do_one_step_plot"]
             fft_r, fft_phi, fft_l = self.analyse_one_step(step, will_plot)
-            self.fft_list.append(an_fft)
+            self.fft_r_list.append(fft_r)
+            self.fft_phi_list.append(fft_phi)
+            self.fft_l_list.append(fft_l)
 
     def analyse_one_step(self, psv, will_plot):
         """
@@ -208,8 +212,10 @@ class HarmonicAnalysis:
         for i, a_field in enumerate(bfield):
             point = coordinates[i]
             r_v = self.norm(point-centre)
-            # warning - CHECK phi sign here
-            phi_v = self.norm(numpy.cross(longitudinal, point-centre))
+            # phi vector points in the positive angle direction
+            # so same direction as vector from coordinates[i-1] to coordinates[i+1]
+            phi_v = self.norm(numpy.cross(point-centre, longitudinal))
+            #print("CHECK phi v", phi_v, self.norm(coordinates[i+1]-coordinates[i-1]))
             br.append(numpy.dot(a_field, r_v))
             bphi.append(numpy.dot(a_field, phi_v))
             bl.append(numpy.dot(a_field, longitudinal))
