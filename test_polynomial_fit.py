@@ -4,7 +4,7 @@ import numpy
 
 import unittest
 
-class TestPolynomialFit(unittest.TestCase):
+class TestPolynomialFit():#unittest.TestCase):
     def setUp(self):
         self.fitter = polynomial_fit.PolynomialFit()
 
@@ -39,19 +39,48 @@ class TestPolynomialFit(unittest.TestCase):
         n_points = n_poly_coefficients*2
         x_in = numpy.random.uniform(-1, 1, [n_points, dimension])
         poly_coefficients = numpy.random.uniform(-1, 1, n_poly_coefficients)
+        self.fitter.verbose = 0
         self.fitter.polynomial_order = order
         self.fitter.dimension = dimension
         poly_vectors = self.fitter.make_polynomial_vector(x_in)
-        self.fitter.polynomial_order = 0 # check this gets filled by least_squares_fit
-        self.fitter.dimension = 0 # check this gets filled by least_squares_fit
         y_out = poly_vectors*poly_coefficients
         y_out = numpy.sum(y_out, axis=1)
-        test_coeffs = self.fitter.least_squares_fit(x_in, y_out, order, [-10, 10], 1e-6).x
+        test_coeffs = self.fitter.least_squares_fit(x_in, y_out, [-10, 10], 1e-6).x
         self.assertEqual(test_coeffs.size, poly_coefficients.size)
         for i in range(n_poly_coefficients):
             self.assertAlmostEqual(test_coeffs[i], poly_coefficients[i])
 
+class TestMultiPolynomialFit(unittest.TestCase):
+    def setUp(self):
+        self.multifitter = polynomial_fit.MultipolynomialFit()
 
+    def test_least_squares_fit(self):
+        dimension = 3
+        order = 2
+        n_poly_coefficients = 10
+        n_points = n_poly_coefficients*2
+        x_in = numpy.random.uniform(-1, 1, [n_points, dimension])
+        ref_coeffs = numpy.random.uniform(-1, 1, [dimension, n_poly_coefficients])
+        y_ref = []
+
+        for i in range(dimension):
+            polynomial = polynomial_fit.PolynomialFit()
+            polynomial.polynomial_order = order
+            polynomial.dimension = dimension
+            polynomial.polynomial_coefficients = ref_coeffs[i]
+            y_ref.append(polynomial.function(x_in))
+        y_ref = numpy.array(y_ref).transpose()
+
+        self.multifitter.dimension = dimension
+        self.multifitter.polynomial_order = order
+        self.multifitter.verbose = 1
+
+        optimisation_list = self.multifitter.least_squares_fit(x_in, y_ref, [-10, 10], 1e-6)
+        test_coeffs = numpy.array([optim.x for optim in optimisation_list])
+        self.assertEqual(test_coeffs.shape, ref_coeffs.shape)
+        for i in range(dimension):
+            for j in range(n_poly_coefficients):
+                self.assertAlmostEqual(test_coeffs[i, j], ref_coeffs[i, j])
 
 
 
