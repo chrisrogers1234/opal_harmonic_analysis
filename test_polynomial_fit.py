@@ -4,7 +4,7 @@ import numpy
 
 import unittest
 
-class TestPolynomialFit():#unittest.TestCase):
+class TestPolynomialFit(unittest.TestCase):
     def setUp(self):
         self.fitter = polynomial_fit.PolynomialFit()
 
@@ -35,7 +35,10 @@ class TestPolynomialFit():#unittest.TestCase):
     def test_least_squares_fit(self):
         dimension = 3
         order = 2
-        n_poly_coefficients = 10
+        self.fitter.dimension = dimension
+        self.fitter.polynomial_order = order
+        polynomial_vector = self.fitter.make_polynomial_vector([[0]*dimension])
+        n_poly_coefficients = polynomial_vector.shape[1]
         n_points = n_poly_coefficients*2
         x_in = numpy.random.uniform(-1, 1, [n_points, dimension])
         poly_coefficients = numpy.random.uniform(-1, 1, n_poly_coefficients)
@@ -45,10 +48,16 @@ class TestPolynomialFit():#unittest.TestCase):
         poly_vectors = self.fitter.make_polynomial_vector(x_in)
         y_out = poly_vectors*poly_coefficients
         y_out = numpy.sum(y_out, axis=1)
-        test_coeffs = self.fitter.least_squares_fit(x_in, y_out, [-10, 10], 1e-6).x
-        self.assertEqual(test_coeffs.size, poly_coefficients.size)
-        for i in range(n_poly_coefficients):
-            self.assertAlmostEqual(test_coeffs[i], poly_coefficients[i])
+        for algorithm in ["linear_least_squares", "differential_evolution", ][0:1]:
+            self.fitter.algorithm = algorithm
+            test_coeffs = self.fitter.least_squares_fit(x_in, y_out, [-10, 10], 1e-6).x
+            self.assertEqual(test_coeffs.size, poly_coefficients.size)
+            for i in range(n_poly_coefficients):
+                self.assertAlmostEqual(test_coeffs[i], poly_coefficients[i])
+            #print("FIT TEST", algorithm)
+            #print(test_coeffs)
+            #print(poly_coefficients)
+
 
 class TestMultiPolynomialFit(unittest.TestCase):
     def setUp(self):

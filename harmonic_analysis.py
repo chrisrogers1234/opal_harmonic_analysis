@@ -1,4 +1,5 @@
 import os
+import json
 
 import pandas
 import numpy
@@ -36,6 +37,7 @@ the values of C_n at each step are stored in self.fft_list
 class HarmonicAnalysis:
     def __init__(self, config):
         self.config = config
+        self.verbose = config["verbose"]
         self.trajectory = None
         self.trajectory_columns = ["id", "x", "xp", "y", "yp", "z", "zp"]
         self.field = pyopal.objects.field # by default we use pyopal field
@@ -59,7 +61,8 @@ class HarmonicAnalysis:
         self.trajectory = pandas.read_csv(trajectory_filename, sep=" ",
                                           header=0, names=columns, skiprows=2)
         self.trajectory["step"] = [i for i in range(self.trajectory.shape[0])]
-        print(f"Loaded {self.trajectory.shape[0]} rows")
+        if self.verbose > 2:
+            print(f"Loaded {self.trajectory.shape[0]} rows")
 
     def analyse_trajectory(self):
         """
@@ -215,7 +218,6 @@ class HarmonicAnalysis:
             # phi vector points in the positive angle direction
             # so same direction as vector from coordinates[i-1] to coordinates[i+1]
             phi_v = self.norm(numpy.cross(point-centre, longitudinal))
-            #print("CHECK phi v", phi_v, self.norm(coordinates[i+1]-coordinates[i-1]))
             br.append(numpy.dot(a_field, r_v))
             bphi.append(numpy.dot(a_field, phi_v))
             bl.append(numpy.dot(a_field, longitudinal))
@@ -258,7 +260,8 @@ class HarmonicAnalysis:
         """
         Make plots characterising harmonic analysis of a single step
         """
-        print("Plotting at", psv)
+        if self.verbose > 2:
+            print("Plotting at", psv)
         figure = self.plot_coordinate_system(psv, horizontal, vertical, coordinates)
         figure.suptitle(f"Step {psv['step']}")
         figure.savefig(f"coords_{psv['step']}.png")
@@ -357,6 +360,7 @@ def default_config():
         "harmonic":8, # number of terms in FFT
         "delta":1e-3, # distance from trajectory to harmonic analysis coordinates [metres]
         "do_one_step_plot":[100],
+        "verbose":0,
     }
     return config
 

@@ -36,6 +36,7 @@ class MultipolynomialFit:
         self.verbose = 1
         self.print_time_step = 1
         self.max_iter = int(1e9)
+        self.algorithm = "differential_evolution"
         # output of most recent fit attempt
         self.optimisation_list = []
 
@@ -43,6 +44,8 @@ class MultipolynomialFit:
         """
         Do least squares fit. Each 1D polynomial is fit independently.
         """
+        x_in = numpy.array(x_in)
+        y_out = numpy.array(y_out)
         self.one_d_polynomials = []
         if self.dimension != y_out.shape[1]:
             raise ValueError("Output vector lengths did not match dimension")
@@ -54,16 +57,22 @@ class MultipolynomialFit:
             polynomial_1d.verbose = self.verbose
             polynomial_1d.print_time_step = self.print_time_step
             polynomial_1d.max_iter = self.max_iter
+            polynomial_1d.algorithm = self.algorithm
             y_out_1d = y_out[:,i].transpose()
-            print("Fitting", y_out_1d)
+            if self.verbose > 4:
+                print("Fitting", y_out_1d)
             out = polynomial_1d.least_squares_fit(x_in, y_out_1d, poly_limits, tolerance)
             self.optimisation_list.append(out)
             self.one_d_polynomials.append(polynomial_1d)
         return self.optimisation_list
 
     def function(self, x_in):
-        y_out = numpy.array([polynomial.function(x_in) for polynomial in self.one_d_polynomials])
+        y_out = numpy.array([polynomial.function(x_in) for polynomial in self.one_d_polynomials]).transpose()
+        return y_out
 
+    def get_coefficients(self):
+        coeffs = numpy.array([p.polynomial_coefficients for p in self.one_d_polynomials])
+        return coeffs
 
 
 class PolynomialFit:
@@ -92,14 +101,16 @@ class PolynomialFit:
         # set by least_squares_fit method
         self.polynomial_order = 0
         self.dimension = 4
-        # control print output
+        # control and print output
         self.verbose = 1
         self.print_time_step = 1
         self.max_iter = int(1e9)
+        self.algorithm = "differential_evolution"
         # ephemeral data used during fitting
         self.polynomial_data_tmp = None
         self.coefficients_one_d_tmp = None
         self.iter_tmp = 0
+        self.score_tmp = 0
 
         self.setup()
 
@@ -127,13 +138,24 @@ class PolynomialFit:
         limits = [(poly_limits[0], poly_limits[1]) for i in range(n_coefficients)]
         seed = self.make_seed(n_coefficients)
         self.print_time = -1
-        optimisation = scipy.optimize.differential_evolution(self.fit_function, limits, tol=tolerance, x0=seed, maxiter=self.max_iter)
-        self.polynomial_coefficients = optimisation.x
-        if self.verbose > 0:
+        return self.optimise(limits, tolerance, seed)
+
+    def optimise(self, limits, tolerance, seed):
+        if self.algorithm == "differential_evolution":
+            optimisation = scipy.optimize.differential_evolution(self.fit_function, limits, tol=tolerance, x0=seed, maxiter=self.max_iter)
+            self.polynomial_coefficients = optimisation.x
+        elif self.algorithm == "linear_least_squares":
+            optimisation = self.lls()
+        else:
+            optimisation = scipy.optimize.minimize(self.fit_function, bounds=limits, x0=seed, method=self.algorithm, tol=tolerance,
+                options={"maxiter":self.max_iter})
+            self.polynomial_coefficients = optimisation.x
+        if self.verbose > 1:
             self.print_time = -1
             self.fit_function(self.polynomial_coefficients)
             print()
         return optimisation
+
 
     def function(self, x_in):
         """
@@ -197,7 +219,29 @@ class PolynomialFit:
         residual = residual*residual
         score = numpy.sum(residual)**0.5
         self.iter_tmp += 1
+        self.score_tmp = score
         if self.verbose > 0 and time.time() > self.print_time:
             self.print_time = time.time()+self.print_time_step
             print(f"i: {self.iter_tmp} coeffs: {coeffs_np} score: {score:10.6g}")
         return score
+
+    def lls(self):
+        """
+        Fit using linear least squares
+
+        In this case the number of (x, y) values must be exactly equal to the
+        number of polynomial coefficients. Input values are truncated
+        accordingly.
+        """
+        n_coefficients = self.xp_tmp.shape[1]
+        y_out = self.y_out_tmp[:n_coefficients]
+        xp_in = self.xp_tmp[:n_coefficients]
+        lls_output = scipy.linalg.lstsq(xp_in, y_out)
+        result = scipy.optimize.OptimizeResult()
+        result.x = lls_output[0]
+        self.polynomial_coefficients = lls_output[0]
+        result.success = True
+        result.nit = 1
+        result.fun = self.fit_function(result.x)
+        return result
+

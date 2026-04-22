@@ -1,16 +1,25 @@
 import os
 import shutil
+import itertools
+import math
 
 import numpy
 import h5py
 import scipy
-import itertools
+import matplotlib
+import matplotlib.pyplot
 
 import pyopal.objects.minimal_runner
 import pyopal.elements.multipolet
 import pyopal.elements.output_plane
+import pyopal.elements.local_cartesian_offset
 
 import polynomial_fit
+
+def clear_dir(a_dir):
+    if os.path.exists(a_dir):
+        shutil.rmtree(a_dir)
+    os.makedirs(a_dir)
 
 class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
     def __init__(self):
@@ -19,27 +28,33 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
 
         self.run_name = "tracking_analysis"
         self.tmp_dir = "./tracking_analysis"
+        self.plot_dir = "./tracking_analysis"
         self.verbose = 0
+        self.r0 = 1.0
 
         self.ke = 0.07 # initial kinetic energy [GeV]
-        self.max_steps = 5
         self.steps_per_turn = 1000
-        self.step_size_m = 1e-3 # tracking step size [metre]
+        self.step_size_m = 1e-4 # tracking step size [metre]
         self.particle_algorithm = "grid" # "grid" or "scatter"
+        self.output_separation = 10*self.step_size_m # distance between output planes
+        self.max_steps = int(self.output_separation*1.5/self.step_size_m)
 
         # particle grid
-        self.delta_vector = numpy.array([1e-1, 1e-1, 1e-1, 1e-1]) # size of grid in x, xp, y, yp
+        self.delta_vector = numpy.array([1e-3, 1e6, 1e-3, 1e6]) # size of grid in x, px, y, py # metres, eV
         self.particle_grid_order = 3 # 0 is reference only, 1 is linear, 2 is quadratic, etc
         self.negative_grid = True # if False, track particles in positive delta region; if True also track in negative delta region
 
         # particle scatter
-        self.n_particles = 1000
+        self.n_particles = 100
+
+        # fields
+        self.multipoles = []
+        self.angle = 0.0 # degree, 0.0 means aligned with s axis, +90.0 means aligned with horizontal axis
 
     def setup(self):
         """Set up derived quantities"""
-        if os.path.exists(self.tmp_dir):
-            shutil.rmtree(self.tmp_dir)
-        os.makedirs(self.tmp_dir)
+        clear_dir(self.tmp_dir)
+        clear_dir(self.plot_dir)
         self.momentum = ((self.ke+self.mass)**2-self.mass**2)**0.5 # [GeV/c]
         self.time_per_turn = self.steps_per_turn*self.step_size_s(self.step_size_m) # seconds
         if self.particle_algorithm == "grid":
@@ -50,6 +65,8 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
             if self.verbose > 3:
                 print("Building scatter")
             self.build_distribution_scatter()
+        if self.verbose > 10:
+            print(self.distribution_str)
 
     def step_size_s(self, step_size_mm):
         """Step size in seconds"""
@@ -58,11 +75,53 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
         step_size_ns = step_size_mm/beta_rel/c_light
         return step_size_ns
 
+    def make_multipole(self):
+        if len(self.multipoles) == 0:
+            return []
+        half_step = pyopal.elements.local_cartesian_offset.LocalCartesianOffset()
+        half_step.set_attributes(
+            end_position_y=self.step_size_m/2.0,
+            end_normal_y=1.0
+        )
+
+        translation = pyopal.elements.local_cartesian_offset.LocalCartesianOffset()
+        translation.set_attributes(
+            end_position_y=-0.5,
+            end_normal_y=1.0
+        )
+
+        rotation = pyopal.elements.local_cartesian_offset.LocalCartesianOffset()
+        rotation.set_attributes(
+            end_normal_x=math.sin(math.radians(self.angle)),
+            end_normal_y=math.cos(math.radians(self.angle))
+        )
+
+
+        multipole = pyopal.elements.multipolet.MultipoleT()
+        multipole.set_attributes(
+            horizontal_aperture=1,
+            vertical_aperture=1,
+            left_fringe=1e-6,
+            right_fringe=1e-6,
+            length=1,
+            maximum_f_order=1,
+            maximum_x_order=1,
+            t_p=self.multipoles
+        )
+        return [rotation, translation, multipole] #half_step,
+
     def make_element_iterable(self):
         """
         This is just a dummy lattice, so just check that we can add some dummy drifts
         """
-        return [self.null_drift(), self.make_output_plane(1e-9, "plane_0"), self.make_output_plane(1e-3, "plane_1")]
+        line = [
+            self.null_drift(),
+            self.make_output_plane(1e-9, "plane_0"),
+            self.make_output_plane(self.output_separation, "plane_1")
+        ]
+        line += self.make_multipole()
+        return line
+
 
     def make_output_plane(self, y0, filename):
         output_plane = pyopal.elements.output_plane.OutputPlane()
@@ -130,7 +189,6 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
         particle_vectors = particle_vectors.transpose()
         self.generate_distribution_string(particle_vectors)
 
-
 class TrackingAnalysis:
     def __init__(self):
         self.verbose = 100
@@ -141,39 +199,56 @@ class TrackingAnalysis:
         self.h5_key_list = ["x", "y", "z", "time", "px", "py", "pz", "id"]
         self.hits_in = None
         self.hits_out = None
-        self.fit_order = 2
+        self.fit_order = 1
         self.limits = [-10, 10]
         self.chi2_tolerance = 1e-15
         self.polynomial_fit = None
-        self.delta_vector = numpy.array([1e-1, 1e-1, 1e-1, 1e-1])
+        self.algorithm = "differential_evolution"
 
+
+    def generate_hit_vector(self, hit_list, valid_ids):
+        """
+        Iterate over hit list:
+            check that hit id is in valid ids
+            append x, px, z, pz to an array
+        """
+        hits_gen = [[hit["x"], hit["px"], hit["z"], hit["pz"]] for hit in hit_list if hit["id"] in valid_ids]
+        array_data = numpy.array(hits_gen)
+        return array_data
 
     def load_beam_files(self):
         # load the hits
-        self.hits_in = [hit for hit in self.generate_hit_h5py(self.h5_filename_in)]
-        self.hits_out = [hit for hit in self.generate_hit_h5py(self.h5_filename_out)]
+        self.hits_in = self.generate_hit_h5py(self.h5_filename_in)
+        self.hits_out = self.generate_hit_h5py(self.h5_filename_out)
         # find the event ids common to both hit lists
         valid_ids = set([hit["id"] for hit in self.hits_in]) & set([hit["id"] for hit in self.hits_out])
-        # generate the array of x, px, y, py values
-        array_in = [[hit["x"]/, hit["px"], hit["z"], hit["pz"]] for hit in self.hits_in if hit["id"] in valid_ids]
-        array_out = [[hit["x"], hit["px"], hit["z"], hit["pz"]] for hit in self.hits_out if hit["id"] in valid_ids]
+        # generate the arrays for polynomial solve
+        array_in = self.generate_hit_vector(self.hits_in, valid_ids)
+        array_out = self.generate_hit_vector(self.hits_out, valid_ids)
+        if array_in.shape != array_out.shape:
+            raise ValueError(f"Input array shape {array_in.shape} was not the same as output array shape {array_out.shape}")
         if self.verbose > 4:
-            print("x_in\n", numpy.array(array_in))
+            print(f"x_in {array_in.shape}\n", numpy.array(array_in[:10]))
             print()
-            print("x_out\n", numpy.array(array_out))
+            print(f"x_out {array_out.shape}\n", numpy.array(array_out[:10]))
         # do the polynomial fit
         self.polynomial = polynomial_fit.MultipolynomialFit()
+        self.polynomial.algorithm = self.algorithm
         self.polynomial.dimension = 4
+        self.polynomial.verbose = self.verbose
         for fit_order in range(0, self.fit_order+1):
             self.polynomial.polynomial_order = fit_order
-            self.polynomial.least_squares_fit(array_in, array_out, self.limits, self.chi2_tolerance)
-        print("polynomial\n", self.polynomial.polynomial_coefficients)
-        print("x_calc\n", self.polynomial.function(array_in))
-        print("score\n", self.polynomial.fit_function(self.polynomial.polynomial_coefficients))
+        self.polynomial.least_squares_fit(array_in, array_out, self.limits, self.chi2_tolerance)
+        if self.verbose > 0:
+            print("Found polynomial\n", self.polynomial.get_coefficients())
+            print("    In ", [p.iter_tmp for p in self.polynomial.one_d_polynomials], "function calls")
+            print("    RMS residual", [o.fun for o in self.polynomial.optimisation_list])
+        self.residuals = self.polynomial.function(array_in)-array_out
 
     def generate_hit_h5py(self, h5_filename):
         h5_file = h5py.File(h5_filename, 'r')
-        hits = [] # list of hits in the file
+        hits = []
+        hit_ids = []
         for key in h5_file.keys():
             if key[:5] != "Step#":
                 if self.verbose > 10:
@@ -184,33 +259,93 @@ class TrackingAnalysis:
                 hit_dict = {}
                 for h5_key in self.h5_key_list:
                     hit_dict[h5_key] = h5_file[key][h5_key][i]
-                if self.verbose >= 4:
+                    if h5_key in self.unit_conversion:
+                        hit_dict[h5_key] *= self.unit_conversion[h5_key]
+                if hit_dict["id"] in hit_ids:
+                    continue
+                hit_ids.append(hit_dict["id"])
+                hits.append(hit_dict)
+        hits = sorted(hits, key = lambda x: x["id"])
+        for hit_dict in hits:
+            if self.verbose > 5:
+                if self.verbose >= 10:
                     print(hit_dict)
-                yield(hit_dict)
+                elif hit_dict["id"] < 2:
+                    print(hit_dict)
+        return hits
 
-    def do_plots(self):
+    def max_res_text(self):
+        text = "Max residuals:\n"
+        abs_residuals = numpy.abs(self.residuals)
+        for i in range(4):
+            max_res = max(abs_residuals[:, i])
+            text += self.axis_labels[i]+f": {max_res:12.4g}; "
+        return text
+
+    def do_plots(self, filename):
         self.load_beam_files()
+        figure = matplotlib.pyplot.figure(figsize=[20,10])
+        figure.suptitle(self.max_res_text())
+        for j in range(4):
+            for i in range(4):
+                axes = figure.add_subplot(4, 4, i+j*4+1)
+                axes.set_position([0.1+0.2*i, 0.1+0.2*j, 0.2, 0.2])
+                self.plot_residuals(axes, j, i)
+                if j > 0:
+                    axes.get_xaxis().set_visible(False)
+                if i > 0:
+                    axes.get_yaxis().set_visible(False)
+        figure.savefig(filename)
 
+    def plot_residuals(self, axes, axis_out, axis_in):
+        var_in = self.variables[axis_in]
+        residual_view = self.residuals[:, axis_out]
+        hit_variables = [hit[var_in] for hit in self.hits_in]
+        axes.scatter(hit_variables, residual_view)
+        axes.set_xlabel(self.axis_labels[axis_in])
+        ordinate = self.get_magnitude(residual_view)
+        axes.set_ylabel("Res. "+self.axis_labels[axis_out]+f" $\\times 10^{{{ordinate}}}$")
+
+    def get_magnitude(self, x_list):
+        x_max = max([abs(x) for x in x_list])
+        i = 0
+        while x_max/10**i < 1:
+            i -= 1
+        while x_max/10**i > 10:
+            i += 1
+        return i
+
+    # converts h5 files to mm, MeV/c
+    p_mass = 938.27208943
+    unit_conversion = {"x":1000, "px":p_mass, "y":1000, "py":p_mass, "z":1000, "pz":p_mass}
+    variables = ["x", "px", "z", "pz"]
+    axis_labels = ["h [mm]", "$p_h$ [MeV/c]", "v [mm]", "$p_v$ [MeV/c]"]
 
 def main():
+    algorithms = "Powell", "Nelder-Mead", "CG"
+
+    numpy.set_printoptions(linewidth=200)
     simulation = Simulation()
     simulation.verbose = 0
     simulation.n_particles = 100
     simulation.particle_algorithm = "scatter"
     #simulation.particle_grid_order = 1
     #simulation.particle_algorithm = "grid"
+    simulation.multipoles = [0.0, 1.0]
     simulation.setup()
     simulation.execute_fork()
     print(f"Simulation running in {simulation.tmp_dir}")
 
     analysis = TrackingAnalysis()
-    analysis.verbose = 10
+    analysis.algorithm = "differential_evolution"
     analysis.fit_order = 1
-    analysis.do_plots()
-
+    analysis.verbose = 5
+    analysis.do_plots(f"{self.plot_dir}/residuals_order_1.png")
     analysis.fit_order = 2
-    analysis.do_plots()
+    analysis.do_plots(f"{self.plot_dir}/residuals_order_2.png")
 
 
 if __name__ == "__main__":
     main()
+    matplotlib.pyplot.show(block=False)
+    input("Press <Enter> to finish")
