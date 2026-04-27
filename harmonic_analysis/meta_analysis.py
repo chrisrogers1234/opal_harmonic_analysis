@@ -31,6 +31,86 @@ class MetaAnalysis:
         self.output_dir = f"{os.getcwd()}/plots"
         numpy.set_printoptions(linewidth=200)
 
+    def do_analysis(self):
+        tracking_analysis.clear_dir(self.output_dir)
+        self.harmonics = harmonic_analysis.HarmonicAnalysis(harmonic_analysis.default_config())
+        self.simulation = tracking_analysis.Simulation()
+        self.simulation.r0 = 10.0
+        self.simulation.postprocess = self.postprocess
+        self.simulation.delta_vector = numpy.array([100e-3, 100e6, 100e-3, 100e6]) # m, eV
+        angle_list = [angle for angle in range(0, 46, 5)]
+        rotated_residual_list = []
+        quad_residual_list = []
+        rot_tm = []
+        quad_tm = []
+        for angle in angle_list:
+            print("For angle", angle)
+            self.simulation.multipoles = [0.0, 1.0, 0.0]
+            self.harmonics_file_name = f"{self.output_dir}/harmonics_{angle}_rotated"
+            self.make_simulation_beam()
+
+            # First we run the analysis with the 1 T/m quad
+            self.run_simulation(angle)
+            fft_r_rot, fft_phi_rot, fft_l_rot = self.load()
+            rot_tm.append(self.get_transfer_map(f"rot_{angle}"))
+            rms_residuals = numpy.sum(self.analysis.residuals, axis=0)
+            rotated_residual_list.append(rms_residuals)
+            print("  rotated residuals:", rms_residuals)
+            if self.verbose > 0:
+                print("  rotated ev 0:")
+                for i in range(len(self.analysis.hits_in)):
+                    print("                     ", self.analysis.hits_in[i])
+                for i in range(len(self.analysis.hits_in)):
+                    print("                     ", self.analysis.hits_out[i])
+
+            # Next we run the analysis with the rotated quad
+            self.simulation.multipoles = numpy.real(fft_r_rot)[1:4].tolist() # ouput of harmonic analysis
+            self.harmonics_file_name = f"{self.output_dir}/harmonics_{angle}_quad"
+            self.run_simulation(0)
+            fft_r_quad, fft_phi_quad, fft_l_quad = self.load()
+            quad_tm.append(self.get_transfer_map(f"quad_{angle}"))
+            rms_residuals = numpy.sum(self.analysis.residuals, axis=0)
+            quad_residual_list.append(rms_residuals)
+            print("  quad residuals:    ", rms_residuals)
+            if self.verbose > 0:
+                print("  quad ev 0:")
+                for i in range(len(self.analysis.hits_in)):
+                    print("                     ", self.analysis.hits_in[i])
+                print()
+                for i in range(len(self.analysis.hits_in)):
+                    print("                     ", self.analysis.hits_out[i])
+                print()
+                for i in range(len(self.analysis.hits_in)):
+                    uin = numpy.array([self.analysis.hits_in[i][var] for var in ["x", "px", "z", "pz"]])
+                    print(f"     uin {i}:           ", uin)
+                    print(f"     u_t {i}:           ", self.analysis.polynomial.function([uin]))
+                print()
+                for i in range(len(self.analysis.hits_in)):
+                    print(f"     uout {i}:         ", numpy.array([self.analysis.hits_out[i][var] for var in ["x", "px", "z", "pz"]]))
+                print("  rotated harmonics: ", numpy.real(fft_r_rot))
+                print("  quad harmonics:    ", numpy.real(fft_r_quad))
+                print("  rotated tm:        ", rot_tm[-1][:,0], "\n")
+                for i in range(1, 5):
+                    print("                    ", rot_tm[-1][:,i])
+                print("  quad tm:           ", quad_tm[-1][:,0], "\n")
+                for i in range(1, 5):
+                    print("                    ", quad_tm[-1][:,i])
+
+        if len(angle_list) == 1:
+            return
+
+        rotated_residual_list = numpy.array(rotated_residual_list)
+        quad_residual_list = numpy.array(quad_residual_list)
+        label = ["pure quad", "rotated quad"]
+        a_list = [angle_list, angle_list]
+        a_txt = "angle [deg]"
+        self.plot(a_list, a_txt, [quad_residual_list[:,0], rotated_residual_list[:,0]], "h residuals [mm]", label, f"{self.output_dir}/residual_h_vs_angle.png")
+        self.plot(a_list, a_txt, [quad_residual_list[:,1], rotated_residual_list[:,1]], "$p_h$ residuals [MeV/c]", label, f"{self.output_dir}/residual_ph_vs_angle.png")
+        self.plot(a_list, a_txt, [quad_residual_list[:,2], rotated_residual_list[:,2]], "v residuals [mm]", label, f"{self.output_dir}/residual_v_vs_angle.png")
+        self.plot(a_list, a_txt, [quad_residual_list[:,3], rotated_residual_list[:,3]], "$p_v$ residuals [MeV/c]", label, f"{self.output_dir}/residual_pv_vs_angle.png")
+
+        self.plot_tm(quad_tm, rot_tm, angle_list)
+
     def plot(self, x_data, x_label, y_data, y_label, plot_labels, figname):
         figure = matplotlib.pyplot.figure()
         axes = figure.add_subplot(1, 1, 1)
@@ -40,54 +120,6 @@ class MetaAnalysis:
         axes.set_ylabel(y_label)
         axes.legend()
         figure.savefig(figname)
-
-    def do_analysis(self):
-        tracking_analysis.clear_dir(self.output_dir)
-        self.harmonics = harmonic_analysis.HarmonicAnalysis(harmonic_analysis.default_config())
-        self.simulation = tracking_analysis.Simulation()
-        self.simulation.postprocess = self.postprocess
-        self.simulation.delta_vector = numpy.array([100e-3, 100e6, 100e-3, 100e6]) # m, eV
-        angle_list = [angle for angle in range(0, 46, 45)]
-        rotated_residual_list = []
-        quad_residual_list = []
-        self.make_simulation_beam()
-        rot_tm = []
-        quad_tm = []
-        for angle in angle_list:
-            print("For angle", angle)
-            self.simulation.multipoles = [0.0, 1.0, 0.0]
-            self.harmonics_file_name = f"{self.output_dir}/harmonics_{angle}_rotated"
-
-            # First we run the analysis with the 1 T/m quad
-            self.run_simulation(angle)
-            fft_r_rot, fft_phi_rot, fft_l_rot = self.load()
-            rot_tm.append(self.get_transfer_map(f"rot_{angle}"))
-            rms_residuals = numpy.sum(self.analysis.residuals, axis=0)
-            rotated_residual_list.append(rms_residuals)
-            print("  rotated residuals:", rms_residuals)
-
-            # Next we run the analysis with the rotated quad
-            self.simulation.multipoles = numpy.real(fft_r_rot)[1:4].tolist() # ouput of harmonic analysis
-            self.harmonics_file_name = f"{self.output_dir}/harmonics_{angle}_quad"
-
-            self.run_simulation(0)
-            fft_r_quad, fft_phi_quad, fft_l_quad = self.load()
-            quad_tm.append(self.get_transfer_map(f"quad_{angle}"))
-            rms_residuals = numpy.sum(self.analysis.residuals, axis=0)
-            quad_residual_list.append(rms_residuals)
-            print("  quad residuals:   ", rms_residuals)
-
-        rotated_residual_list = numpy.array(rotated_residual_list)
-        quad_residual_list = numpy.array(quad_residual_list)
-        label = ["pure quad", "rotated quad"]
-        a_list = [angle_list, angle_list]
-        a_txt = "angle [deg]"
-        self.plot(a_list, a_txt, [quad_residual_list[:,0], rotated_residual_list[:,0]], "x residuals [mm]", label, f"{self.output_dir}/residual_x_vs_angle.png")
-        self.plot(a_list, a_txt, [quad_residual_list[:,1], rotated_residual_list[:,1]], "px residuals [MeV/c]", label, f"{self.output_dir}/residual_px_vs_angle.png")
-        self.plot(a_list, a_txt, [quad_residual_list[:,2], rotated_residual_list[:,2]], "y residuals [mm]", label, f"{self.output_dir}/residual_y_vs_angle.png")
-        self.plot(a_list, a_txt, [quad_residual_list[:,3], rotated_residual_list[:,3]], "py residuals [MeV/c]", label, f"{self.output_dir}/residual_py_vs_angle.png")
-
-        self.plot_tm(quad_tm, rot_tm, angle_list)
 
     def get_indices(self, order):
         pfit = polynomial_fit.PolynomialFit()
@@ -139,8 +171,8 @@ class MetaAnalysis:
                     axes.plot(angle_list, rot_sm_data, label=f"{iout}; {str(index)}")
             max_index = numpy.argmin(rot_submatrix[-1])
             max_index = numpy.unravel_index(max_index, rot_submatrix[-1].shape)
-            print(f"Min TM term for plot order {plot_order}", max_index, " i.e. ", max_index[0], subindices[max_index[1]], "value", rot_submatrix[-1][max_index])
-            print("For indices", subindices)
+            #print(f"Min TM term for plot order {plot_order}", max_index, " i.e. ", max_index[0], subindices[max_index[1]], "value", rot_submatrix[-1][max_index])
+            #print("For indices", subindices)
             #axes.legend()
             axes.set_title(f"TM terms order {plot_order} for rotated quad")
             figure.savefig(f"{self.output_dir}/tm_terms_rot_{plot_order}.png")
@@ -199,11 +231,15 @@ class MetaAnalysis:
     def make_simulation_beam(self):
         self.simulation.n_particles = 100
         self.simulation.particle_algorithm = "scatter"
+        #self.simulation.particle_grid_order = self.fit_order
+        #self.simulation.particle_algorithm = "grid"
+        #self.simulation.negative_grid = False
         self.simulation.setup()
 
     def run_simulation(self, angle):
         self.simulation.angle = angle
         self.simulation.verbose = self.verbose
+        self.simulation.output_separation = 0.5e-3
         if self.verbose > 0:
             print(f"Simulation running in {self.simulation.tmp_dir}")
         backend = matplotlib.get_backend()

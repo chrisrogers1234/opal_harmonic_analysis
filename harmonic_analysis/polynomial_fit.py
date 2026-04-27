@@ -106,6 +106,7 @@ class PolynomialFit:
         self.print_time_step = 1
         self.max_iter = int(1e9)
         self.algorithm = "differential_evolution"
+        self.lls_seed = True # use linear least squares to find the seed
         # ephemeral data used during fitting
         self.polynomial_data_tmp = None
         self.coefficients_one_d_tmp = None
@@ -204,6 +205,8 @@ class PolynomialFit:
         return polynomial_vector
 
     def make_seed(self, n_coefficients):
+        if self.lls_seed:
+            self.lls()
         coefficients = list(self.polynomial_coefficients) + [0.0]*n_coefficients
         coefficients = coefficients[:n_coefficients]
         return coefficients

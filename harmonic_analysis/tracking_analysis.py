@@ -30,7 +30,7 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
         self.tmp_dir = "./tracking_analysis"
         self.plot_dir = "./tracking_analysis"
         self.verbose = 0
-        self.r0 = 1.0
+        self.r0 = 2.0
 
         self.ke = 0.07 # initial kinetic energy [GeV]
         self.steps_per_turn = 1000
@@ -96,11 +96,10 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
             end_normal_y=math.cos(math.radians(self.angle))
         )
 
-
         multipole = pyopal.elements.multipolet.MultipoleT()
         multipole.set_attributes(
-            horizontal_aperture=1,
-            vertical_aperture=1,
+            horizontal_aperture=self.r0,
+            vertical_aperture=self.r0,
             left_fringe=1e-6,
             right_fringe=1e-6,
             length=1,
@@ -131,10 +130,10 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
             placement_style="CENTRE_NORMAL",
             algorithm="RK4",
             tolerance=1e-15,
-            height=1,
+            height=self.r0,
             output_filename=filename,
             verbose_level=0,
-            width=1,
+            width=self.r0,
         )
         return output_plane
 
@@ -187,6 +186,7 @@ class Simulation(pyopal.objects.minimal_runner.MinimalRunner):
     def build_distribution_scatter(self):
         particle_vectors = numpy.array([numpy.random.uniform(-d, d, self.n_particles) for d in self.delta_vector])
         particle_vectors = particle_vectors.transpose()
+        particle_vectors = numpy.concatenate([numpy.array([[0.0,0.0,0.0,0.0]]), particle_vectors])
         self.generate_distribution_string(particle_vectors)
 
 class TrackingAnalysis:
@@ -197,6 +197,7 @@ class TrackingAnalysis:
         self.h5_filename_in = os.path.join(self.tmp_dir, "plane_0.h5")
         self.h5_filename_out = os.path.join(self.tmp_dir, "plane_1.h5")
         self.h5_key_list = ["x", "y", "z", "time", "px", "py", "pz", "id"]
+        self.var_list = ["x", "px", "z", "pz"]
         self.hits_in = None
         self.hits_out = None
         self.fit_order = 1
@@ -212,7 +213,11 @@ class TrackingAnalysis:
             check that hit id is in valid ids
             append x, px, z, pz to an array
         """
-        hits_gen = [[hit["x"], hit["px"], hit["z"], hit["pz"]] for hit in hit_list if hit["id"] in valid_ids]
+        hit_list = sorted(hit_list, key = lambda hit: hit["id"])
+        if hit_list[0]["id"] != 0:
+            raise RuntimeError("Expected hit id 0 for reference trajectory")
+        ref = hit_list[0]
+        hits_gen = [[hit[var]-ref[var] for var in self.var_list] for hit in hit_list if hit["id"] in valid_ids]
         array_data = numpy.array(hits_gen)
         return array_data
 
@@ -234,7 +239,7 @@ class TrackingAnalysis:
         # do the polynomial fit
         self.polynomial = polynomial_fit.MultipolynomialFit()
         self.polynomial.algorithm = self.algorithm
-        self.polynomial.dimension = 4
+        self.polynomial.dimension = len(self.var_list)
         self.polynomial.verbose = self.verbose
         for fit_order in range(0, self.fit_order+1):
             self.polynomial.polynomial_order = fit_order
