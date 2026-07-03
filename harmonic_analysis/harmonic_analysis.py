@@ -1,3 +1,4 @@
+import math
 import os
 import json
 
@@ -8,6 +9,8 @@ import matplotlib.pyplot
 
 import pyopal.objects.parser
 import pyopal.objects.field
+
+import plot_dump_em_fields
 
 """
 HarmonicAnalysis builds a multipole expansion around a trajectory based on an OPAL input file
@@ -77,6 +80,7 @@ class HarmonicAnalysis:
             self.fft_r_list.append(fft_r)
             self.fft_phi_list.append(fft_phi)
             self.fft_l_list.append(fft_l)
+        self.plot_trajectory_fft()
 
     def analyse_one_step(self, psv, will_plot):
         """
@@ -346,14 +350,69 @@ class HarmonicAnalysis:
         axes.set_title(f"Axis: {fft_axis}")
         return figure
 
+    def plot_trajectory_fft(self):
+        fft_r_plot = numpy.array(self.fft_r_list)
+        fft_l_plot = numpy.array(self.fft_l_list)
+        fft_phi_plot = numpy.array(self.fft_phi_list)
+        s = [0.0]
+        for i, step in self.trajectory.iterrows():
+            if step["id"] != self.config["harmonic_analysis_track_id"]:
+                continue
+            if i == 0:
+                step_last = step
+                continue
+            s.append(((step["x"]-step_last["x"])**2+(step["y"]-step_last["y"])**2)**0.5+s[-1])
+            step_last = step
+
+        figure = matplotlib.pyplot.figure()
+        axes = figure.add_subplot()
+        axes.set_title("Harmonic components in B$_r$")
+        axes.plot(s, fft_r_plot[:, 0], label="0")
+        axes.plot(s, fft_r_plot[:, 1], label="1")
+        axes.plot(s, fft_r_plot[:, 2], label="2")
+        axes.plot(s, fft_r_plot[:, 3], label="3")
+        axes.plot(s, fft_r_plot[:, 4], label="4")
+        axes.legend()
+        axes.set_xlabel("s [m]")
+        axes.set_ylabel("Harmonic component [T/m$^n$]")
+        figure.savefig("multipole_components_r.png")
+
+        figure = matplotlib.pyplot.figure()
+        axes = figure.add_subplot()
+        axes.set_title("Harmonic components in B$_l$")
+        axes.plot(s, fft_l_plot[:, 0], label="0")
+        axes.plot(s, fft_l_plot[:, 1], label="1")
+        axes.plot(s, fft_l_plot[:, 2], label="2")
+        axes.plot(s, fft_l_plot[:, 3], label="3")
+        axes.plot(s, fft_l_plot[:, 4], label="4")
+        axes.legend()
+        axes.set_xlabel("s [m]")
+        axes.set_ylabel("Harmonic component [T/m$^n$]")
+        figure.savefig("multipole_components_l.png")
+
+        figure = matplotlib.pyplot.figure()
+        axes = figure.add_subplot()
+        axes.set_title("Harmonic components in B$_\\phi$")
+        axes.plot(s, fft_phi_plot[:, 0], label="0")
+        axes.plot(s, fft_phi_plot[:, 1], label="1")
+        axes.plot(s, fft_phi_plot[:, 2], label="2")
+        axes.plot(s, fft_phi_plot[:, 3], label="3")
+        axes.plot(s, fft_phi_plot[:, 4], label="4")
+        axes.legend()
+        axes.set_xlabel("s [m]")
+        axes.set_ylabel("Harmonic component [T/m$^n$]")
+        figure.savefig("multipole_components_phi.png")
+
+
+
     @classmethod
     def norm(self, a_vector):
         """Normalise a vector"""
         return a_vector/numpy.linalg.norm(a_vector)
 
-def default_config():
+def benchmark_ffa_config():
     config = {
-        "working_directory":"lattice/",
+        "working_directory":"lattice/benchmark_lattice-20260216",
         "lattice_filename":"benchmark_lattice-20260216_placement-testing",
         "trajectory_filename":"benchmark_lattice-20260216_placement-testing-trackOrbit.dat",
         "harmonic_analysis_track_id":"ID1", # ID of trajectory
@@ -364,14 +423,31 @@ def default_config():
     }
     return config
 
+def isis1_config():
+    config = {
+        "working_directory":"lattice/isis1",
+        "lattice_filename":"isis1.opal",
+        "trajectory_filename":"isis1-trackOrbit.dat",
+        "harmonic_analysis_track_id":"ID1", # ID of trajectory
+        "harmonic":16, # number of terms in FFT
+        "delta":1e-2, # distance from trajectory to harmonic analysis coordinates [metres]
+        "do_one_step_plot":[100],
+        "emfield_filename":"data/CoarseField_0.dat",
+        "verbose":0,
+    }
+    return config
+
+
 def main():
-    config = default_config()
+    config = isis1_config()
     here = os.getcwd()
     os.chdir(config["working_directory"])
     analysis = HarmonicAnalysis(config)
     analysis.parse_lattice_file()
     analysis.parse_track_orbit_file()
     analysis.analyse_trajectory()
+    dump_em_fields = plot_dump_em_fields.PlotDumpEMFields(config)
+    dump_em_fields.do_plots(analysis.trajectory)
     os.chdir(here)
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ class TestHarmonicAnalysis(unittest.TestCase):
         self.default_config = {
             "harmonic":8,
             "delta":2,
+            "verbose":0,
         }
         self.analysis = harmonic_analysis.HarmonicAnalysis(self.default_config)
         self.analysis.field = FieldMockup()
@@ -129,21 +130,21 @@ class TestHarmonicAnalysis(unittest.TestCase):
     def test_analyse_one_step(self):
         centre = [7, 8, 9]
         psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":0, "yp":1, "zp":0, "step":-1}
-        self.default_config["harmonic"] = 16
+        self.default_config["harmonic"] = 8
         self.default_config["delta"] = 1e-1
         c_n = []
         for i in range(3):
             real_c = numpy.random.uniform(-10, 10)
             imag_c = numpy.random.uniform(-10, 10)
             c_n.append(real_c+imag_c*1j)
-        #c_n = [1, 2, 3]
+        c_n = [0, 1.0, 0.0]
         self.analysis.field.c_n = c_n
         self.analysis.field.centre = numpy.array(centre)
         fft_r, fft_phi, fft_l = self.analysis.analyse_one_step(psv, self.do_plots)
         for i, c_ni in enumerate(c_n):
             self.assertAlmostEqual(c_ni, fft_r[i+1])
         if self.do_plots:
-            psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":1, "yp":1, "zp":0, "step":-2}
+            psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":3**0.5/2, "yp":0.5, "zp":0, "step":-2}
             self.analysis.analyse_one_step(psv, self.do_plots)
             psv = {"x":centre[0], "y":centre[1], "z":centre[2], "xp":1, "yp":0, "zp":0, "step":-3}
             self.analysis.analyse_one_step(psv, self.do_plots)

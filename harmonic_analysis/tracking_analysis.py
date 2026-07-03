@@ -222,6 +222,13 @@ class TrackingAnalysis:
         return array_data
 
     def load_beam_files(self):
+        """
+        Load the hits
+
+        Note that automatically works in deviation variables for numerical
+        stability reasons i.e. subtract reference (id=0) trajectory from other
+        trajectories
+        """
         # load the hits
         self.hits_in = self.generate_hit_h5py(self.h5_filename_in)
         self.hits_out = self.generate_hit_h5py(self.h5_filename_out)
