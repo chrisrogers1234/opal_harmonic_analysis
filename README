@@ -1,0 +1,32 @@
+OPAL harmonic analysis
+======================
+
+Library to analyse harmonic components of field OPAL fields and build transfer
+maps based on those components.
+
+Modules
+-------
+
+harmonic_analysis: loads a field from OPAL (via python interface) and calculate
+harmonics of the field at a point or along a trajectory
+
+transfer_map: [in development] based on the harmonic components of the field,
+calculates the infinitesimal transfer map that transports a particle from s to
+s+ds
+
+tracking_analysis: [in development] based on an infinitesimal step through the
+OPAL tracking, estimates the infinitesimal transfer map that transports a
+particle from s to s+ds
+
+polynomial_fit: support routines for tracking_analysis. Given a set of input
+positions u_i and output positions v_j, guess what is the polynomial that
+maps the u_i to v_i
+
+meta_analysis: compare the transfer map calculated by transfer_map to the transfer
+map calculated by tracking_analysis. Do they agree?
+
+plot_dump_em_fields: [not used] plots the field from OPAL
+
+multipolet_dipole_analysis: [in development]
+
+
